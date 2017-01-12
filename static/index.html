@@ -1,0 +1,211 @@
+<html>
+<head>
+  <meta name="viewport" content="width=device-width">
+<style>
+body {
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+.graph .axis {
+  stroke-width: 1;
+}
+
+.graph .axis .tick line {
+  stroke: black;
+}
+
+.graph .axis .tick text {
+  fill: black;
+  font-size: 0.7em;
+}
+
+.graph .axis .domain {
+  fill: none;
+  stroke: black;
+}
+
+.graph .group {
+  fill: none;
+  stroke: black;
+  stroke-width: 1.5;
+}
+</style>
+</head>
+<body>
+  <div class="graph"></div>
+  <script src="http://d3js.org/d3.v3.min.js"></script>
+<script type="text/javascript">
+var ws = new WebSocket("ws://birch.local:8080/")
+
+var limit = 60,
+    duration = 0.01666666753590107 * 1000,
+    now = new Date(Date.now() - duration)
+
+var width = 320,
+    height = 500
+
+var groups = {
+    x: {
+        value: 0,
+        color: 'red',
+        data: d3.range(limit).map(function() {
+            return 0
+        })
+    },
+    y: {
+        value: 0,
+        color: 'green',
+        data: d3.range(limit).map(function() {
+            return 0
+        })
+    },
+    z: {
+        value: 0,
+        color: 'blue',
+        data: d3.range(limit).map(function() {
+            return 0
+        })
+    },
+    xVel: {
+        value: 0,
+        color: '#800',
+        data: d3.range(limit).map(function() {
+            return 0
+        })
+    },
+    yVel: {
+        value: 0,
+        color: '#080',
+        data: d3.range(limit).map(function() {
+            return 0
+        })
+    },
+    zVel: {
+        value: 0,
+        color: '#008',
+        data: d3.range(limit).map(function() {
+            return 0
+        })
+    }
+}
+
+var x = d3.time.scale()
+    .domain([now - (limit - 2), now - duration])
+    .range([0, width])
+
+var y = d3.scale.linear()
+    .domain([0, 10])
+    .range([height / 2, -height / 2])
+
+var line = d3.svg.line()
+    .interpolate('basis')
+    .x(function(d, i) {
+        return x(now - (limit - 1 - i) * duration)
+    })
+    .y(function(d) {
+        return y(d)
+    })
+
+var svg = d3.select('.graph').append('svg')
+    .attr('class', 'chart')
+    .attr('width', width)
+    .attr('height', height + 50)
+
+var paths = svg.append('g')
+
+for (var name in groups) {
+  var group = groups[name]
+  group.path = paths.append('path')
+      .data([group.data])
+      .attr('class', name + ' group')
+      .style('stroke', group.color)
+}
+
+if (window.DeviceMotionEvent != undefined) {
+  var prevAcc = {
+    x: 0,
+    y: 0,
+    z: 0
+  }
+  var prevDirection
+  var direction
+  var velocity = {
+    x: 0,
+    y: 0,
+    z: 0
+  }
+  // ignore acceleration beneath this value
+  var filteringFactor = .1
+	window.ondevicemotion = function(e) {
+    var acc = event.acceleration
+    duration = event.interval
+
+    for (var name in groups) {
+      var group = groups[name]
+      if (acc[name]) {
+        group.data.push(acc[name])
+        group.path.attr('d', line)
+      } else {
+        var axis = name.slice(0, 1)
+        velocity[axis] = velocity[axis] + ((acc[axis] - prevAcc[axis]) * event.interval) * 0.99
+        group.data.push(velocity[axis])
+        group.path.attr('d', line)
+      }
+    }
+
+    // Shift domain
+    x.domain([now - (limit - 2) * duration, now - duration])
+
+    // Slide paths left
+    paths.attr('transform', null)
+        .transition()
+        .duration(duration)
+        .ease('linear')
+        .attr('transform', 'translate(' + x(now - (limit - 1) * duration) + ')')
+
+    // Remove oldest data point from each group
+    for (var name in groups) {
+      var group = groups[name]
+      group.data.shift()
+    }
+
+    ws.send(JSON.stringify({
+      acceleration: acc,
+      velocity: velocity
+    }))
+
+    // // console.log(velocity)
+    // if (velocity > 0.001) {
+    //   // out
+    //   direction = "out"
+    // } else if (velocity < 0.001) {
+    //   // in
+    //   direction = "in"
+    // }
+
+    // var dz = ((acc.z - prevAcc.z) * event.interval) * 0.99
+    // velocity += dz
+
+    prevAcc = acc
+	}
+
+  setInterval(function() {
+    // if (velocity > 0.001) {
+      console.log("velocity:", velocity)
+    // } else {
+    //   console.log("velocity:", 0)
+    // }
+    // console.log("acceleration:", prevAcc)
+  }, 1000)
+
+  setInterval(function() {
+    if (direction !== prevDirection) {
+      console.log(direction)
+    }
+
+    prevDirection = direction
+  }, 100)
+}
+</script>
+</body>
+</html>
